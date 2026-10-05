@@ -1,0 +1,1 @@
+"""Klipkliper core package."""

@@ -1,0 +1,56 @@
+name: Build Klipkliper Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+        shell: pwsh
+
+      - name: Pre-download Whisper model (small)
+        run: |
+          python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+        shell: pwsh
+
+      - name: Download ffmpeg (static)
+        run: |
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-dl
+          $ff = Get-ChildItem ffmpeg-dl -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $ff.FullName -Destination .
+          $fp = Get-ChildItem ffmpeg-dl -Recurse -Filter ffprobe.exe | Select-Object -First 1
+          Copy-Item $fp.FullName -Destination .
+        shell: pwsh
+
+      - name: Build with PyInstaller
+        run: pyinstaller klipkliper.spec
+        shell: pwsh
+
+      - name: Bundle ffmpeg + package
+        run: |
+          Copy-Item ffmpeg.exe dist/Klipkliper/
+          Copy-Item ffprobe.exe dist/Klipkliper/
+          Compress-Archive -Path dist/Klipkliper -DestinationPath Klipkliper-windows.zip
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Klipkliper-windows
+          path: Klipkliper-windows.zip
